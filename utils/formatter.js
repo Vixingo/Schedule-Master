@@ -1,27 +1,19 @@
-export function formatTitle(event) {
+export const formatTitle = (event) => {
     const map = {
         quiz: "📝 Quiz",
         assignment: "📌 Assignment",
         exam: "📚 Exam",
     };
     const prefix = map[event.type] || "📅 Event";
-    return `${prefix} - ${event.title}`;
-}
+    return `${prefix} - ${event.summary}`;
+};
 
-export function buildDescription(event, originalText) {
+export const buildDescription = (event, originalText) => {
     let desc = "";
-
     if (event.course) desc += `Course: ${event.course}\n\n`;
     if (event.syllabus) desc += `Syllabus:\n${event.syllabus}\n\n`;
-
-    if (event.links?.length) {
-        desc += "Links:\n";
-        event.links.forEach((l) => (desc += `${l}\n`));
-        desc += "\n";
-    }
-
-    desc += "--- Full Announcement ---\n";
-    desc += originalText;
-
+    if (event.links?.length)
+        desc += "Links:\n" + event.links.join("\n") + "\n\n";
+    desc += "--- Full Announcement ---\n" + originalText;
     return desc;
-}
+};
