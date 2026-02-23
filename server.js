@@ -1,16 +1,17 @@
 import "dotenv/config";
+import express from "express";
 import { Client, GatewayIntentBits } from "discord.js";
-import axios from "axios";
-import cron from "node-cron";
-import { createClient } from "@supabase/supabase-js";
+import { oauth2Client } from "./config/google.js";
+import { supabase } from "./config/supabase.js";
+import { extractEvents } from "./services/aiService.js";
+import { getOrCreateUser } from "./services/userService.js";
+import { upsertEvent } from "./services/eventService.js";
+import { extractLinks } from "./utils/linkExtractor.js";
 
-// ================== ENV ==================
-const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
-const GROQ_API_KEY = process.env.GROQ_API_KEY;
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_KEY = process.env.SUPABASE_KEY;
+const app = express();
+const PORT = process.env.PORT || 3000;
 
-// ================== INIT ==================
+// Discord Bot
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -19,134 +20,67 @@ const client = new Client({
     ],
 });
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
-
-// Temporary memory (MVP only)
-const pendingEvents = {};
-
-// ================== GROQ CALL ==================
-async function extractEvent(text) {
-    const response = await axios.post(
-        "https://api.groq.com/openai/v1/chat/completions",
-        {
-            model: "llama-3.1-8b-instant",
-            temperature: 0,
-            messages: [
-                {
-                    role: "system",
-                    content: `
-Extract one event.
-Return ONLY valid JSON:
-{
- "title": "",
- "event_time": "ISO format",
- "confidence": 0.0
-}
-`,
-                },
-                { role: "user", content: text },
-            ],
-        },
-        {
-            headers: {
-                Authorization: `Bearer ${GROQ_API_KEY}`,
-                "Content-Type": "application/json",
-            },
-        },
-    );
-
-    const content = response.data.choices[0].message.content;
-    return JSON.parse(content);
-}
-
-// ================== DISCORD BOT ==================
 client.on("messageCreate", async (message) => {
     if (message.author.bot) return;
 
-    const userId = message.author.id;
+    const user = await getOrCreateUser(message.author.id);
 
-    // If waiting for confirmation
-    if (pendingEvents[userId]) {
-        const pending = pendingEvents[userId];
-
-        if (message.content.toLowerCase().startsWith("yes")) {
-            const reminderMatch = message.content.match(/\d+/);
-            const reminderMinutes = reminderMatch
-                ? parseInt(reminderMatch[0])
-                : 10;
-
-            await supabase.from("events").insert([
-                {
-                    user_id: userId,
-                    title: pending.title,
-                    event_time: pending.event_time,
-                    reminder_minutes: reminderMinutes,
-                    reminded: false,
-                },
-            ]);
-
-            delete pendingEvents[userId];
-
-            return message.reply(
-                `✅ Event saved. I will remind you ${reminderMinutes} minutes before.`,
-            );
-        } else {
-            delete pendingEvents[userId];
-            return message.reply("❌ Cancelled.");
-        }
+    const result = await extractEvents(message.content);
+    if (!result.events?.length) {
+        return message.reply("No valid events found.");
     }
 
-    // Normal message → extract event
-    try {
-        const event = await extractEvent(message.content);
+    let summary = "";
 
-        if (!event.title || !event.event_time) {
-            return message.reply("⚠️ Could not understand event.");
-        }
+    for (const event of result.events) {
+        if (event.confidence < 0.65) continue;
 
-        pendingEvents[userId] = event;
+        event.links = [
+            ...new Set([
+                ...(event.links || []),
+                ...extractLinks(message.content),
+            ]),
+        ];
 
-        return message.reply(
-            `I understood:\n📌 ${event.title}\n🕒 ${event.event_time}\n\nIs this correct?\nReply: "Yes 15" (for 15 min reminder)`,
-        );
-    } catch (err) {
-        console.error(err);
-        return message.reply("Error processing event.");
+        const status = await upsertEvent(event, message.content, user);
+        summary += `${event.title} → ${status}\n`;
     }
+
+    message.reply(`Processed:\n${summary}`);
 });
 
-// ================== REMINDER CRON ==================
-cron.schedule("* * * * *", async () => {
-    const now = new Date();
+client.login(process.env.DISCORD_TOKEN);
 
-    const { data: events } = await supabase
-        .from("events")
-        .select("*")
-        .eq("reminded", false);
+// OAuth routes
+app.get("/auth", (req, res) => {
+    const { discord_id } = req.query;
+    const state = Buffer.from(discord_id).toString("base64");
 
-    if (!events) return;
+    const url = oauth2Client.generateAuthUrl({
+        access_type: "offline",
+        scope: ["https://www.googleapis.com/auth/calendar"],
+        state,
+    });
 
-    for (const event of events) {
-        const eventTime = new Date(event.event_time);
-        const reminderTime = new Date(
-            eventTime.getTime() - event.reminder_minutes * 60000,
-        );
-
-        if (now >= reminderTime) {
-            try {
-                const user = await client.users.fetch(event.user_id);
-                await user.send(`⏰ Reminder: ${event.title}`);
-
-                await supabase
-                    .from("events")
-                    .update({ reminded: true })
-                    .eq("id", event.id);
-            } catch (err) {
-                console.error("Reminder error:", err);
-            }
-        }
-    }
+    res.redirect(url);
 });
 
-// ================== START ==================
-client.login(DISCORD_TOKEN);
+app.get("/oauth2callback", async (req, res) => {
+    const { code, state } = req.query;
+    const discordId = Buffer.from(state, "base64").toString();
+
+    const { tokens } = await oauth2Client.getToken(code);
+
+    const user = await getOrCreateUser(discordId);
+
+    await supabase.from("google_accounts").upsert({
+        user_id: user.id,
+        access_token: tokens.access_token,
+        refresh_token: tokens.refresh_token,
+        expiry_date: tokens.expiry_date,
+    });
+
+    res.send("Google connected successfully.");
+});
+
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
