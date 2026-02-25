@@ -15,8 +15,19 @@ const extractJsonBlock = (rawContent = "") => {
 };
 
 const toDateSafely = (value) => {
-    const date = value ? new Date(value) : null;
-    return date && !Number.isNaN(date.getTime()) ? date : null;
+    if (!value) return null;
+
+    const date = new Date(value);
+
+    if (!isNaN(date.getTime())) return date;
+
+    // try fallback parsing
+    try {
+        const fallback = Date.parse(value);
+        return fallback ? new Date(fallback) : null;
+    } catch {
+        return null;
+    }
 };
 
 const normalizeEvent = (item, fullText) => {
@@ -79,25 +90,32 @@ const normalizeEvent = (item, fullText) => {
 };
 
 export const parseTextToEvents = async (text) => {
-    const response = await axios.post(
-        "https://api.groq.com/openai/v1/chat/completions",
-        {
-            model: "llama-3.1-8b-instant",
-            temperature: 0,
-            messages: [
-                {
-                    role: "system",
-                    content: `
-Extract all academic events or meeting details from the text.
-Return ONLY JSON:
+    try {
+        const response = await axios.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            {
+                model: "llama-3.1-8b-instant",
+                temperature: 0,
+                messages: [
+                    {
+                        role: "system",
+                        content: `
+You are an event extraction engine.
+
+Extract ALL events, meetings, deadlines, exams, classes, reminders.
+
+Convert ALL dates into ISO 8601 format.
+
+Return ONLY valid JSON:
+
 {
  "events": [
    {
      "type": "",
      "title": "",
      "course": "",
-     "start_time": "",
-     "end_time": "",
+     "start_time": "ISO_STRING",
+     "end_time": "ISO_STRING",
      "all_day": false,
      "duration_minutes": null,
      "syllabus": "",
@@ -105,22 +123,44 @@ Return ONLY JSON:
      "confidence": 0.0
    }
  ]
-}`,
-                },
-                { role: "user", content: text },
-            ],
-        },
-        {
-            headers: {
-                Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
-                "Content-Type": "application/json",
+}
+
+NO markdown.
+NO explanation.
+JSON ONLY.
+`,
+                    },
+                    { role: "user", content: text },
+                ],
             },
-        },
-    );
+            {
+                headers: {
+                    Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+                    "Content-Type": "application/json",
+                },
+            },
+        );
 
-    const rawContent = response.data.choices?.[0]?.message?.content || "{}";
-    const parsed = JSON.parse(extractJsonBlock(rawContent));
-    const events = Array.isArray(parsed.events) ? parsed.events : [];
+        const rawContent = response.data.choices?.[0]?.message?.content || "{}";
 
-    return events.map((item) => normalizeEvent(item, text)).filter(Boolean);
+        console.log("RAW LLM RESPONSE:\n", rawContent);
+
+        let parsed;
+
+        try {
+            parsed = JSON.parse(extractJsonBlock(rawContent));
+        } catch (err) {
+            console.error("JSON PARSE FAILED:", err);
+            return [];
+        }
+
+        const events = Array.isArray(parsed.events) ? parsed.events : [];
+
+        console.log("PARSED EVENTS:", events);
+
+        return events.map((item) => normalizeEvent(item, text)).filter(Boolean);
+    } catch (error) {
+        console.error("Groq API Error:", error.message);
+        return [];
+    }
 };
