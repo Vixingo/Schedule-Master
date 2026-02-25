@@ -3,10 +3,24 @@ import { encrypt, decrypt } from "../utils/crypto.util.js";
 
 export const saveUserTokens = async (discordId, tokens) => {
     const encryptedTokens = encrypt(JSON.stringify(tokens));
-    await supabase.from("users").upsert({
-        discord_id: discordId,
-        google_tokens: encryptedTokens,
-    });
+
+    const { data, error } = await supabase
+        .from("users")
+        .upsert(
+            {
+                discord_id: discordId,
+                google_tokens: encryptedTokens,
+            },
+            { onConflict: "discord_id" },
+        )
+        .select();
+
+    if (error) {
+        console.error("SUPABASE UPSERT ERROR:", error);
+        throw error;
+    }
+
+    console.log("Tokens saved for:", discordId, data);
 };
 
 export const getUserTokens = async (discordId) => {
