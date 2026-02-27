@@ -6,22 +6,22 @@ import { buildReminders } from "../utils/reminder.util.js";
 import { extractLinks } from "../utils/linkExtractor.js";
 import { formatTitle, buildDescription } from "../utils/formatter.js";
 import {
-    getEventsByDiscordId,
+    getEventsByWhatsAppPhone,
     saveEventRecord,
 } from "../models/event.model.js";
 
 const router = express.Router();
 
 router.post("/process", async (req, res) => {
-    const { text, discordId, reminderMinutes = 30 } = req.body;
+    const { text, whatsappPhone, reminderMinutes = 30 } = req.body;
 
-    if (!text || !discordId) {
+    if (!text || !whatsappPhone) {
         return res
             .status(400)
-            .json({ error: "text and discordId are required" });
+            .json({ error: "text and whatsappPhone are required" });
     }
 
-    const tokens = await getUserTokens(discordId);
+    const tokens = await getUserTokens(whatsappPhone);
     if (!tokens) return res.status(401).json({ error: "Google not connected" });
 
     const events = await parseTextToEvents(text);
@@ -49,7 +49,7 @@ router.post("/process", async (req, res) => {
         });
 
         await saveEventRecord({
-            discordId,
+            whatsappPhone,
             googleEventId: created.id,
             title,
             description,
@@ -68,9 +68,9 @@ router.post("/process", async (req, res) => {
     res.json({ message: "Events created", events: createdEvents });
 });
 
-router.get("/user/:discordId", async (req, res) => {
-    const { discordId } = req.params;
-    const events = await getEventsByDiscordId(discordId);
+router.get("/user/:whatsappPhone", async (req, res) => {
+    const { whatsappPhone } = req.params;
+    const events = await getEventsByWhatsAppPhone(whatsappPhone);
     res.json({ events });
 });
 

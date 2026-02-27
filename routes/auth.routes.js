@@ -5,16 +5,16 @@ import { saveUserTokens } from "../models/user.model.js";
 const router = express.Router();
 
 router.get("/google", (req, res) => {
-    const discordId = req.query.discordId || req.query.state;
-    if (!discordId) {
-        return res.status(400).send("discordId is required");
+    const whatsappPhone = req.query.whatsappPhone || req.query.state;
+    if (!whatsappPhone) {
+        return res.status(400).send("whatsappPhone is required");
     }
 
     const url = oauth2Client.generateAuthUrl({
         access_type: "offline",
         prompt: "consent",
         scope: ["https://www.googleapis.com/auth/calendar"],
-        state: String(discordId),
+        state: String(whatsappPhone),
     });
     res.redirect(url);
 });
@@ -22,9 +22,9 @@ router.get("/google", (req, res) => {
 router.get("/google/callback", async (req, res) => {
     const { code, state } = req.query;
     const { tokens } = await oauth2Client.getToken(code);
-    await saveUserTokens(state, tokens); // state = Discord ID
+    await saveUserTokens(state, tokens); // state = WhatsApp phone
     res.redirect(
-        `/dashboard?discordId=${encodeURIComponent(state)}&connected=1`,
+        `/dashboard?whatsappPhone=${encodeURIComponent(state)}&connected=1`,
     );
 });
 

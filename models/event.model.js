@@ -2,7 +2,7 @@ import { supabase } from "../config/db.js";
 import { getOrCreateUser } from "./user.model.js";
 
 export const saveEventRecord = async ({
-    discordId,
+    whatsappPhone,
     googleEventId,
     title,
     description,
@@ -14,7 +14,7 @@ export const saveEventRecord = async ({
     sourceText,
     reminderMinutes,
 }) => {
-    const user = await getOrCreateUser(discordId);
+    const user = await getOrCreateUser(whatsappPhone);
 
     const { data, error } = await supabase
         .from("events")
@@ -38,8 +38,8 @@ export const saveEventRecord = async ({
     return data;
 };
 
-export const getEventsByDiscordId = async (discordId) => {
-    const user = await getOrCreateUser(discordId);
+export const getEventsByWhatsAppPhone = async (whatsappPhone) => {
+    const user = await getOrCreateUser(whatsappPhone);
     const { data, error } = await supabase
         .from("events")
         .select("*")
@@ -51,11 +51,11 @@ export const getEventsByDiscordId = async (discordId) => {
 };
 
 export const updateEventReminderMinutes = async (
-    discordId,
+    whatsappPhone,
     googleEventId,
     reminderMinutes,
 ) => {
-    const user = await getOrCreateUser(discordId);
+    const user = await getOrCreateUser(whatsappPhone);
     const { error } = await supabase
         .from("events")
         .update({ reminder_minutes: reminderMinutes })

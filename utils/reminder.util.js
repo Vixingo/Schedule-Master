@@ -1,4 +1,5 @@
 import cron from "node-cron";
+import { sendWhatsAppMessage } from "../services/whatsapp.service.js";
 
 export const buildReminders = (minutesBefore = 30) => ({
     useDefault: false,
@@ -8,9 +9,8 @@ export const buildReminders = (minutesBefore = 30) => ({
     ],
 });
 
-export const scheduleDiscordReminder = (
-    client,
-    discordId,
+export const scheduleWhatsAppReminder = (
+    whatsappPhone,
     event,
     minutesBefore,
 ) => {
@@ -31,9 +31,9 @@ export const scheduleDiscordReminder = (
         cronExpression,
         async () => {
             try {
-                const user = await client.users.fetch(discordId);
                 const title = event.summary || "Upcoming event";
-                await user.send(
+                await sendWhatsAppMessage(
+                    whatsappPhone,
                     `⏰ Reminder: ${title} starts at ${eventTime.toISOString()}`,
                 );
             } finally {

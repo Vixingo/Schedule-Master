@@ -1,6 +1,6 @@
 CREATE TABLE oauth_states (
     id SERIAL PRIMARY KEY,
-    discord_id TEXT NOT NULL,
+    whatsapp_phone TEXT NOT NULL,
     state_token TEXT UNIQUE NOT NULL,
     created_at TIMESTAMP DEFAULT NOW()
 );
@@ -31,7 +31,7 @@ CREATE INDEX idx_events_user_date ON events (user_id, start_time);
 
 CREATE TABLE users (
     id SERIAL PRIMARY KEY,
-    discord_id TEXT UNIQUE NOT NULL,      -- Discord user ID
+    whatsapp_phone TEXT UNIQUE NOT NULL,  -- WhatsApp phone number (E.164)
     google_tokens TEXT,                   -- Encrypted Google OAuth tokens
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()

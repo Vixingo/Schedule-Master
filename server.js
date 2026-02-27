@@ -3,7 +3,7 @@ import express from "express";
 import session from "express-session";
 import authRoutes from "./routes/auth.routes.js";
 import eventRoutes from "./routes/event.routes.js";
-import { startBot } from "./bot.js";
+import whatsappRoutes from "./routes/whatsapp.routes.js";
 
 const app = express();
 app.use(express.json());
@@ -18,6 +18,7 @@ app.use(
 
 app.use("/auth", authRoutes);
 app.use("/events", eventRoutes);
+app.use("/whatsapp", whatsappRoutes);
 
 app.get("/", (req, res) => res.redirect("/dashboard"));
 
@@ -50,8 +51,8 @@ app.get("/dashboard", (req, res) => {
     <div class="wrap">
         <div class="card">
             <h1>Calendar Agent</h1>
-            <p>Connect Google, then paste text in Discord. Events and raw text are saved in Supabase and synced to Google Calendar.</p>
-            <input id="discordId" placeholder="Discord User ID" />
+            <p>Connect Google, then send text on WhatsApp. Events and raw text are saved in Supabase and synced to Google Calendar.</p>
+            <input id="whatsappPhone" placeholder="WhatsApp Phone (E.164, ex: 15551234567)" />
             <div class="row">
                 <button id="connectBtn">Connect Google</button>
                 <button id="loadBtn">Load My Data</button>
@@ -68,29 +69,29 @@ app.get("/dashboard", (req, res) => {
     <script>
         const statusEl = document.getElementById('status');
         const eventsEl = document.getElementById('events');
-        const discordInput = document.getElementById('discordId');
+        const whatsappInput = document.getElementById('whatsappPhone');
 
         const params = new URLSearchParams(window.location.search);
-        if (params.get('discordId')) {
-            discordInput.value = params.get('discordId');
+        if (params.get('whatsappPhone')) {
+            whatsappInput.value = params.get('whatsappPhone');
         }
         if (params.get('connected') === '1') {
             statusEl.textContent = 'Google Calendar connected.';
         }
 
         document.getElementById('connectBtn').onclick = () => {
-            const discordId = discordInput.value.trim();
-            if (!discordId) return statusEl.textContent = 'Enter Discord ID first.';
-            window.location.href = '/auth/google?discordId=' + encodeURIComponent(discordId);
+            const whatsappPhone = whatsappInput.value.trim();
+            if (!whatsappPhone) return statusEl.textContent = 'Enter WhatsApp phone first.';
+            window.location.href = '/auth/google?whatsappPhone=' + encodeURIComponent(whatsappPhone);
         };
 
         document.getElementById('loadBtn').onclick = async () => {
-            const discordId = discordInput.value.trim();
-            if (!discordId) return statusEl.textContent = 'Enter Discord ID first.';
+            const whatsappPhone = whatsappInput.value.trim();
+            if (!whatsappPhone) return statusEl.textContent = 'Enter WhatsApp phone first.';
 
             statusEl.textContent = 'Loading...';
             eventsEl.innerHTML = '';
-            const res = await fetch('/events/user/' + encodeURIComponent(discordId));
+            const res = await fetch('/events/user/' + encodeURIComponent(whatsappPhone));
             const payload = await res.json();
             if (!res.ok) {
                 statusEl.textContent = payload.error || 'Failed to load';
@@ -121,5 +122,4 @@ app.get("/dashboard", (req, res) => {
 
 app.listen(process.env.PORT || 3000, async () => {
     console.log("Server running...");
-    await startBot();
 });
